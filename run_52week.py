@@ -5,23 +5,20 @@ import os
 import glob
 import re
 
-KEEP_DAYS = 7  # 保持日数
+KEEP_DAYS = 10  # KEEP LAST 10 DAYS
 
-# ---------- 対象日計算（土日なら直近営業日） ----------
+# ---------- Weekday check ----------
+# Stock prices only update Mon-Fri, so skip weekends.
 today = datetime.now()
+weekday = today.weekday()   # 0=Mon, ..., 5=Sat, 6=Sun
 
-if today.weekday() == 5:  # 土曜日
-    target = today - timedelta(days=1)
+if weekday >= 5:
+    print(f"Skip: today is {today.strftime('%A')} (weekend). No execution needed.")
+    exit(0)
 
-elif today.weekday() == 6:  # 日曜日
-    target = today - timedelta(days=2)
+target_date = today.strftime("%Y%m%d")
 
-else:
-    target = today
-
-target_date = target.strftime("%Y%m%d")
-
-# ---------- 52週高値銘柄取得（Elefolo API） ----------
+# ---------- Fetch stocks list from Elefolo API ----------
 url = "http://elefolo.com/NewChartList/getCodeGroup.php"
 
 params = {
@@ -42,7 +39,7 @@ r.raise_for_status()
 data = r.json()
 
 if data.get("success") != 1:
-    raise RuntimeError("52week high stock list fetch failed")
+    raise RuntimeError("52week fetch failed")
 
 codes = data["codes"].split()
 
@@ -52,7 +49,7 @@ if len(codes) == 0:
 print(f"Target date: {target_date}")
 print(f"Number of stocks: {len(codes)}")
 
-# ---------- download_prices.py 実行（日付付きファイル名） ----------
+# ---------- Run download_prices.py with date-suffixed filename ----------
 cmd = [
     "python",
     "download_prices.py",
@@ -64,7 +61,7 @@ cmd = [
 
 subprocess.run(cmd, check=True)
 
-# ---------- 古いファイル削除（7日分のみ保持） ----------
+# ---------- Delete CSVs older than KEEP_DAYS ----------
 pattern = re.compile(r"52week_stock_data_(\d{8})\.csv$")
 files = []
 for f in glob.glob("52week_stock_data_*.csv"):
@@ -72,10 +69,10 @@ for f in glob.glob("52week_stock_data_*.csv"):
     if m:
         files.append((f, m.group(1)))
 
-# 日付順に並べ替え（古い順）
+# Sort by date (oldest first)
 files.sort(key=lambda x: x[1])
 
-# KEEP_DAYS を超える古いものを削除
+# Remove old files beyond KEEP_DAYS
 if len(files) > KEEP_DAYS:
     for old_file, _ in files[:-KEEP_DAYS]:
         print(f"[delete] {old_file}")
