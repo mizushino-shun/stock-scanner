@@ -1,3 +1,20 @@
+# .github/workflows/run_52week.yml
+#
+# 52週高値銘柄の週足価格CSVを自動生成してリポジトリにコミットするワークフロー
+#
+# スケジュール: 月〜土 18:30 JST (= 09:30 UTC)
+# 手動実行: GitHub Actions の "Run workflow" ボタンからも実行可能
+#
+# 出力ファイル:
+#   52week_stock_data_YYYYMMDD.csv  ← 日付付き（アプリの対象日と対応）
+#   52week_stock_data.csv           ← 最新ファイルのコピー（フォールバック用）
+#
+# セットアップ手順:
+#   1. このファイルを .github/workflows/run_52week.yml として配置
+#      （既存ファイルを上書き）
+#   2. GitHub リポジトリの Settings > Actions > General >
+#      "Workflow permissions" を "Read and write permissions" に変更
+
 name: 52週高値データ取得
 
 on:
@@ -9,6 +26,8 @@ on:
 jobs:
   run-52week:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: リポジトリをチェックアウト
@@ -27,10 +46,41 @@ jobs:
       - name: run_52week.py 実行
         run: python run_52week.py
 
+      - name: 日付なしファイルを最新CSVとしてコピー（フォールバック用）
+        run: |
+          DATE=$(TZ=Asia/Tokyo date +'%Y%m%d')
+          DATED_FILE="52week_stock_data_${DATE}.csv"
+          if [ -f "${DATED_FILE}" ]; then
+            cp "${DATED_FILE}" 52week_stock_data.csv
+            echo "✅ ${DATED_FILE} → 52week_stock_data.csv にコピーしました"
+          else
+            echo "⚠️  ${DATED_FILE} が見つかりません。既存の日付付きCSVから最新を検索します"
+            LATEST=$(ls -t 52week_stock_data_????????.csv 2>/dev/null | head -1)
+            if [ -n "${LATEST}" ]; then
+              cp "${LATEST}" 52week_stock_data.csv
+              echo "✅ ${LATEST} → 52week_stock_data.csv にコピーしました"
+            else
+              echo "❌ 日付付きCSVが見つかりませんでした"
+              exit 1
+            fi
+          fi
+
+      - name: 生成されたCSVの確認
+        run: |
+          DATE=$(TZ=Asia/Tokyo date +'%Y%m%d')
+          echo "=== 日付付きCSV ==="
+          ls -la 52week_stock_data_*.csv 2>/dev/null || echo "（なし）"
+          echo "=== 最新CSV（フォールバック用）==="
+          if [ -f "52week_stock_data.csv" ]; then
+            echo "行数: $(wc -l < 52week_stock_data.csv)"
+            echo "先頭3行:"
+            head -3 52week_stock_data.csv
+          fi
+
       - name: CSV をコミット & プッシュ
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add *.csv
-          git diff --cached --quiet || git commit -m "auto: 52week data update"
+          git add 52week_stock_data*.csv
+          git diff --cached --quiet || git commit -m "auto: 52week data update $(TZ=Asia/Tokyo date +'%Y-%m-%d')"
           git push
