@@ -19,8 +19,8 @@ name: 52週高値データ取得
 
 on:
   schedule:
-    # UTC 09:30 = JST 18:30 (月〜土)
-    - cron: '30 9 * * 1-6'
+    # UTC10:00 = JST 19:00 (月〜土)
+    - cron: '01 0 * * 1-6'
   workflow_dispatch:
 
 jobs:
